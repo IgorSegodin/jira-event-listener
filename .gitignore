@@ -1,0 +1,9 @@
+.gradle
+.idea
+*.iml
+
+/out/
+/build/
+
+/dev/jira_home/
+/dev/env.sh
