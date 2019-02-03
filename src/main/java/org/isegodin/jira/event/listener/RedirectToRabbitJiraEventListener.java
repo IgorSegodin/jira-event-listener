@@ -4,11 +4,25 @@ import com.atlassian.jira.event.issue.AbstractIssueEventListener;
 import com.atlassian.jira.event.issue.IssueEvent;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.codehaus.jackson.JsonGenerator;
+import org.codehaus.jackson.JsonProcessingException;
+import org.codehaus.jackson.Version;
+import org.codehaus.jackson.map.JsonSerializer;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.map.SerializerProvider;
+import org.codehaus.jackson.map.annotate.JsonSerialize;
+import org.codehaus.jackson.map.module.SimpleModule;
+import org.isegodin.jira.event.listener.data.converter.IssueEventToEventDtoConverter;
 import org.isegodin.jira.event.listener.rabbit.RabbitConfig;
 import org.isegodin.jira.event.listener.rabbit.RabbitMessageService;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Optional;
+import java.util.zip.GZIPOutputStream;
 
 /**
  * Sends all JIRA issue related events to RabbitMQ topic.
@@ -23,6 +37,7 @@ public class RedirectToRabbitJiraEventListener extends AbstractIssueEventListene
     private static final String RABBIT_USERNAME = "rabbit.username";
     private static final String RABBIT_PASSWORD = "rabbit.password";
     private static final String RABBIT_TOPIC = "rabbit.topic";
+    private static final String GZIP_ENABLE = "gzip.enable";
 
     private static final String JIRA_TOPIC_ROUTING_KEY = "jira.event";
 
@@ -30,6 +45,11 @@ public class RedirectToRabbitJiraEventListener extends AbstractIssueEventListene
     private volatile RabbitMessageService messageService;
 
     private volatile boolean initialized = false;
+    private volatile boolean useGzip = false;
+
+    private final IssueEventToEventDtoConverter eventConverter = new IssueEventToEventDtoConverter();
+
+    private final ObjectMapper objectMapper = createObjectMapper();
 
     @Override
     public String getDescription() {
@@ -43,7 +63,8 @@ public class RedirectToRabbitJiraEventListener extends AbstractIssueEventListene
                 RABBIT_PORT,
                 RABBIT_USERNAME,
                 RABBIT_PASSWORD,
-                RABBIT_TOPIC
+                RABBIT_TOPIC,
+                GZIP_ENABLE
         };
     }
 
@@ -80,6 +101,7 @@ public class RedirectToRabbitJiraEventListener extends AbstractIssueEventListene
         }
 
         synchronized (this) {
+            this.useGzip = Boolean.valueOf(params.get(GZIP_ENABLE));
             this.config = newConfig;
             this.messageService = newMessageService;
             this.initialized = true;
@@ -97,8 +119,10 @@ public class RedirectToRabbitJiraEventListener extends AbstractIssueEventListene
             return;
         }
 
-        // TODO
-        byte[] data = event.toString().getBytes();
+        byte[] data = objectMapper.writeValueAsBytes(eventConverter.convert(event));
+        if (useGzip) {
+            data = compressWithGzip(data);
+        }
 
         try {
             messageService.sendData(JIRA_TOPIC_ROUTING_KEY, data);
@@ -130,6 +154,31 @@ public class RedirectToRabbitJiraEventListener extends AbstractIssueEventListene
                 }
             }
         }
+    }
+
+    private ObjectMapper createObjectMapper() {
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        objectMapper.setSerializationInclusion(JsonSerialize.Inclusion.NON_NULL);
+
+        SimpleModule module = new SimpleModule("java-8-date-time", Version.unknownVersion());
+        module.addSerializer(OffsetDateTime.class, new JsonSerializer<OffsetDateTime>() {
+            @Override
+            public void serialize(OffsetDateTime value, JsonGenerator jgen, SerializerProvider provider) throws IOException, JsonProcessingException {
+                jgen.writeString(value.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
+            }
+        });
+        objectMapper.registerModule(module);
+        return objectMapper;
+    }
+
+    @SneakyThrows
+    private byte[] compressWithGzip(byte[] data) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        GZIPOutputStream gzip = new GZIPOutputStream(out);
+        gzip.write(data);
+        gzip.close();
+        return out.toByteArray();
     }
 
 }

@@ -18,6 +18,7 @@ dependencies {
     compileOnly('com.atlassian.jira:jira-api:7.1.0-QR20151229171111') { transitive = false }
     compileOnly('com.atlassian.annotations:atlassian-annotations:0.16')
     compileOnly('org.slf4j:slf4j-api:1.7.10')
+    compileOnly('org.codehaus.jackson:jackson-mapper-asl:1.9.13')
     compileOnly 'org.projectlombok:lombok:1.18.4'
 
     compile('com.rabbitmq:amqp-client:5.6.0') { transitive = false }
@@ -30,6 +31,6 @@ jar {
         from {
             configurations.compile.collect { println it; it.isDirectory() ? it : zipTree(it) }
         }
-        exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
+        exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
     }
 }
