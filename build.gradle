@@ -20,6 +20,7 @@ dependencies {
     compileOnly('org.slf4j:slf4j-api:1.7.10')
     compileOnly('org.codehaus.jackson:jackson-mapper-asl:1.9.13')
     compileOnly 'org.projectlombok:lombok:1.18.4'
+    annotationProcessor 'org.projectlombok:lombok:1.18.4'
 
     compile('com.rabbitmq:amqp-client:5.6.0') { transitive = false }
 
